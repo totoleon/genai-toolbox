@@ -38,6 +38,7 @@ import (
 	"github.com/googleapis/genai-toolbox/internal/tools/mysqlsql"
 	neo4jtool "github.com/googleapis/genai-toolbox/internal/tools/neo4j"
 	"github.com/googleapis/genai-toolbox/internal/tools/postgressql"
+	"github.com/googleapis/genai-toolbox/internal/tools/postgresnl"
 	"github.com/googleapis/genai-toolbox/internal/tools/spanner"
 	"github.com/googleapis/genai-toolbox/internal/util"
 )
@@ -295,6 +296,12 @@ func (c *ToolConfigs) UnmarshalYAML(ctx context.Context, unmarshal func(interfac
 		switch kind {
 		case postgressql.ToolKind:
 			actual := postgressql.Config{Name: name}
+			if err := dec.DecodeContext(ctx, &actual); err != nil {
+				return fmt.Errorf("unable to parse as %q: %w", kind, err)
+			}
+			(*c)[name] = actual
+		case postgresnl.ToolKind:
+			actual := postgresnl.Config{Name: name}
 			if err := dec.DecodeContext(ctx, &actual); err != nil {
 				return fmt.Errorf("unable to parse as %q: %w", kind, err)
 			}

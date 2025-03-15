@@ -66,3 +66,11 @@ tools:
         type: string
         description: The ID of the hotel to cancel.
     statement: UPDATE hotels SET booked = B'0' WHERE id = $1;
+  natural-language-question-to-db:
+    kind: postgres-nl
+    source: my-pg-source
+    description: "Convert natural language questions to SQL queries for PostgreSQL database"
+    parameters:
+      - name: question
+        type: string
+        description: The natural language question to convert to SQL.
