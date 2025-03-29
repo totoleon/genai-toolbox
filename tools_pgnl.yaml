@@ -10,7 +10,7 @@ tools:
   natural-language-question-to-db:
     kind: postgres-nl
     source: my-pg-source
-    description: "Convert natural language questions to SQL queries for PostgreSQL database"
+    description: "Ask natural language questions to interact with the database."
     parameters:
       - name: question
         type: string

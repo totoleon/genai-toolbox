@@ -166,6 +166,7 @@ func toolInvokeHandler(s *Server, w http.ResponseWriter, r *http.Request) {
 	// claimsFromAuth maps the name of the authservice to the claims retrieved from it.
 	claimsFromAuth := make(map[string]map[string]any)
 	for _, aS := range s.authServices {
+		s.logger.DebugContext(context.Background(), fmt.Sprintf("Checking auth service: %s. r.Header: %v", aS.GetName(), r.Header))
 		claims, err := aS.GetClaimsFromHeader(r.Header)
 		if err != nil {
 			s.logger.DebugContext(context.Background(), err.Error())
@@ -206,7 +207,7 @@ func toolInvokeHandler(s *Server, w http.ResponseWriter, r *http.Request) {
 
 	params, err := tool.ParseParams(data, claimsFromAuth)
 	if err != nil {
-		err = fmt.Errorf("provided parameters were invalid: %w", err)
+		err = fmt.Errorf("provided parameters were invalid: %w. claimsFromAuth: %v data: %v", err, claimsFromAuth, data)
 		s.logger.DebugContext(context.Background(), err.Error())
 		_ = render.Render(w, r, newErrResponse(err, http.StatusBadRequest))
 		return

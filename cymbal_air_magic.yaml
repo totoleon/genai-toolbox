@@ -1,0 +1,124 @@
+sources:
+  my-alloydb-source:
+    kind: alloydb-postgres
+    project: hailongli-senseai
+    region: us-central1
+    cluster: hailong-test
+    instance: hailong-test-primary
+    database: assistantdemo
+    user: toolbox_user
+    password: my-password
+authServices:
+  my_google_service:
+    kind: google
+    clientId: 247162760317-9hj60rv6divcnaq0ghgdm40hn37dne2m.apps.googleusercontent.com
+tools:
+  ask_questions:
+    kind: postgres-sql
+    source: my-alloydb-source
+    description: "Ask questions to check information about flights, airpots, and airlines etc. Be specific about the information you are looking for, or just mention things like 'show me everything'. For example, 'show me everything' about the first flight from SFO to LAX in June'"
+    statement: SELECT alloydb_ai_nl.execute_nl_query($1, 'cymbal_air_nl_config', param_names => ARRAY ['user_email'], param_values => ARRAY [$2]);
+    parameters:
+      - name: question
+        type: string
+        description: The natural language question to ask.
+      - name: user_email
+        type: string
+        description: User ID of the logged in user.
+        authServices:
+          - name: my_google_service
+            field: email
+
+  validate_ticket:
+    kind: postgres-sql
+    source: my-alloydb-source
+    description: |
+      Use this tool to validate ticket before booking.
+    parameters:
+      - name: airline
+        type: string
+        description: Airline unique 2 letter identifier
+      - name: flight_number
+        type: string
+        description: 1 to 4 digit number
+      - name: departure_airport
+        type: string
+        description: Departure airport 3-letter code
+      - name: departure_time
+        type: string
+        description: Flight departure datetime in the format like "2025-01-01T05:50:00Z"
+      - name: arrival_airport
+        type: string
+        description: Arrival airport 3-letter code
+      - name: arrival_time
+        type: string
+        description: Flight arrival datetime in the format like "2025-01-01T05:50:00Z"
+    statement: |
+      SELECT * FROM flights
+      WHERE airline ILIKE $1
+      AND flight_number ILIKE $2
+      AND departure_airport ILIKE $3
+      AND departure_time = $4
+      AND arrival_airport = $5
+      AND arrival_time = $6;
+
+  insert_ticket:
+    kind: postgres-sql
+    source: my-alloydb-source
+    description: |
+      Use this tool to book a flight ticket for the user. You do not need to ask user info as it will be automatically fetched from the user's profile.
+    parameters:
+      - name: user_id
+        type: string
+        description: User ID of the logged in user.
+        authServices:
+          - name: my_google_service
+            field: sub
+      - name: user_name
+        type: string
+        description: Name of the logged in user.
+        authServices:
+          - name: my_google_service
+            field: name
+      - name: user_email
+        type: string
+        description: Email ID of the logged in user.
+        authServices:
+          - name: my_google_service
+            field: email
+      - name: airline
+        type: string
+        description: Airline unique 2 letter identifier
+      - name: flight_number
+        type: string
+        description: 1 to 4 digit number
+      - name: departure_airport
+        type: string
+        description: Departure airport 3-letter code
+      - name: departure_time
+        type: string
+        description: Flight departure datetime
+      - name: arrival_airport
+        type: string
+        description: Arrival airport 3-letter code
+      - name: arrival_time
+        type: string
+        description: Flight arrival datetime
+    statement: |
+      INSERT INTO tickets (
+        user_id,
+        user_name,
+        user_email,
+        airline,
+        flight_number,
+        departure_airport,
+        departure_time,
+        arrival_airport,
+        arrival_time
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);
+
+toolsets:
+  cymbal_air:
+    - ask_questions
+    - insert_ticket
+    - validate_ticket

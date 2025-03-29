@@ -112,7 +112,7 @@ func parseFromAuthService(paramAuthServices []ParamAuthService, claimsMap map[st
 		}
 		return v, nil
 	}
-	return nil, fmt.Errorf("missing or invalid authentication header")
+	return nil, fmt.Errorf("missing or invalid authentication header. paramAuthServices: %v , claimsMap: %v", paramAuthServices, claimsMap)
 }
 
 // ParseParams is a helper function for parsing Parameters from an arbitraryJSON object.
@@ -134,7 +134,7 @@ func ParseParams(ps Parameters, data map[string]any, claimsMap map[string]map[st
 			var err error
 			v, err = parseFromAuthService(paramAuthServices, claimsMap)
 			if err != nil {
-				return nil, fmt.Errorf("error parsing authenticated parameter %q: %w", name, err)
+				return nil, fmt.Errorf("error parsing authenticated parameter %q: %w. Parameters: %v", name, err, ps)
 			}
 		}
 		newV, err := p.Parse(v)

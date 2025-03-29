@@ -12,21 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package postgressql
+package alloydbnla
 
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/googleapis/genai-toolbox/internal/sources"
 	"github.com/googleapis/genai-toolbox/internal/sources/alloydbpg"
-	"github.com/googleapis/genai-toolbox/internal/sources/cloudsqlpg"
-	"github.com/googleapis/genai-toolbox/internal/sources/postgres"
 	"github.com/googleapis/genai-toolbox/internal/tools"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const ToolKind string = "postgres-sql"
+const ToolKind string = "alloydb-nla"
 
 type compatibleSource interface {
 	PostgresPool() *pgxpool.Pool
@@ -34,19 +33,17 @@ type compatibleSource interface {
 
 // validate compatible sources are still compatible
 var _ compatibleSource = &alloydbpg.Source{}
-var _ compatibleSource = &cloudsqlpg.Source{}
-var _ compatibleSource = &postgres.Source{}
 
-var compatibleSources = [...]string{alloydbpg.SourceKind, cloudsqlpg.SourceKind, postgres.SourceKind}
+var compatibleSources = [...]string{alloydbpg.SourceKind}
 
 type Config struct {
 	Name         string           `yaml:"name" validate:"required"`
 	Kind         string           `yaml:"kind" validate:"required"`
 	Source       string           `yaml:"source" validate:"required"`
 	Description  string           `yaml:"description" validate:"required"`
-	Statement    string           `yaml:"statement" validate:"required"`
+	NLConfig 		 string           `yaml:"nlConfig" validate:"required"`
 	AuthRequired []string         `yaml:"authRequired"`
-	Parameters   tools.Parameters `yaml:"parameters"`
+	Parameters   tools.Parameters `yaml:"nlConfigParameters"`
 }
 
 // validate interface
@@ -69,29 +66,51 @@ func (cfg Config) Initialize(srcs map[string]sources.Source) (tools.Tool, error)
 		return nil, fmt.Errorf("invalid source for %q tool: source kind must be one of %q", ToolKind, compatibleSources)
 	}
 
-	// finish tool setup
+	paramNames := make([]string, 0, len(cfg.Parameters))
+	for _, paramDef := range cfg.Parameters {
+		paramNames = append(paramNames, paramDef.GetName())
+	}
+	quotedParamNames := make([]string, len(paramNames))
+	for i, name := range paramNames {
+		// Basic escaping for single quotes within the name itself
+		escapedName := strings.ReplaceAll(name, "'", "''")
+		quotedParamNames[i] = fmt.Sprintf("'%s'", escapedName)
+	}
+	paramNamesSQL := "ARRAY []" // Default for no parameters
+	if len(quotedParamNames) > 0 {
+		paramNamesSQL = fmt.Sprintf("ARRAY [%s]", strings.Join(quotedParamNames, ", "))
+	}
+	paramValuePlaceholders := make([]string, len(paramNames))
+	for i := 0; i < len(paramNames); i++ {
+		// Placeholders start from $2 ($1 is reserved for the natural language query)
+		paramValuePlaceholders[i] = fmt.Sprintf("$%d", i+2)
+	}
+	paramValuesSQL := "ARRAY []" // Default for no parameters
+	if len(paramValuePlaceholders) > 0 {
+		paramValuesSQL = fmt.Sprintf("ARRAY [%s]", strings.Join(paramValuePlaceholders, ", "))
+	}
+
+	stmtFormat := "SELECT alloydb_ai_nl.execute_nl_query($1, '%s', param_names => %s, param_values => %s);"
+	stmt := fmt.Sprintf(stmtFormat, cfg.NLConfig, paramNamesSQL, paramValuesSQL)
+
+	newQuestionParam := tools.NewStringParameter(
+    "question",                      // name
+    "The natural language question to ask.", // description
+	)
+
+	cfg.Parameters = append([]tools.Parameter{newQuestionParam}, cfg.Parameters...)
+
 	t := Tool{
 		Name:         cfg.Name,
 		Kind:         ToolKind,
 		Parameters:   cfg.Parameters,
-		Statement:    cfg.Statement,
+		Statement:    stmt,
 		AuthRequired: cfg.AuthRequired,
 		Pool:         s.PostgresPool(),
 		manifest:     tools.Manifest{Description: cfg.Description, Parameters: cfg.Parameters.Manifest()},
 	}
-	return t, nil
-}
 
-func NewGenericTool(name string, stmt string, authRequired []string, desc string, pool *pgxpool.Pool, parameters tools.Parameters) Tool {
-	return Tool{
-		Name:         name,
-		Kind:         ToolKind,
-		Statement:    stmt,
-		AuthRequired: authRequired,
-		Pool:         pool,
-		manifest:     tools.Manifest{Description: desc, Parameters: parameters.Manifest()},
-		Parameters:   parameters,
-	}
+	return t, nil
 }
 
 // validate interface
@@ -111,8 +130,9 @@ type Tool struct {
 func (t Tool) Invoke(params tools.ParamValues) ([]any, error) {
 	sliceParams := params.AsSlice()
 	results, err := t.Pool.Query(context.Background(), t.Statement, sliceParams...)
+	// return nil, fmt.Errorf("DEBUGGING QUERY: %w. Query: %v , Values: %v", err, t.Statement, sliceParams)
 	if err != nil {
-		return nil, fmt.Errorf("unable to execute query: %w. Query: %v", err, t.Statement)
+		return nil, fmt.Errorf("unable to execute query: %w. Query: %v , Values: %v", err, t.Statement, sliceParams)
 	}
 
 	fields := results.FieldDescriptions()

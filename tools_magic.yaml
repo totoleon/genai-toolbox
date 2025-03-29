@@ -1,0 +1,20 @@
+sources:
+  my-alloydb-source:
+    kind: alloydb-postgres
+    project: hailongli-senseai
+    region: us-central1
+    cluster: hailong-test
+    instance: hailong-test-primary
+    database: toolbox_db
+    user: toolbox_user
+    password: my-password
+tools:
+  query-db-with-natural-language:
+    kind: postgres-sql
+    source: my-alloydb-source
+    description: "Ask natural language questions to interact with the database."
+    parameters:
+      - name: question
+        type: string
+        description: The natural language question to the database.
+    statement: SELECT alloydb_ai_nl.execute_nl_query($1, 'nl2sql_nl_config_1');

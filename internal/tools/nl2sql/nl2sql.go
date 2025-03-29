@@ -59,7 +59,7 @@ func (g *GeminiPostgreSQLGenerator) GenerateSQL(ctx context.Context, dbSchema st
 
 	// Create the prompt
 	prompt := fmt.Sprintf(
-		"You are a SQL expert, given the database schema %s, generate a query that will answer the question: %s. Return the executable query text only without any other comments or quotes.",
+		"You are a SQL expert, given the database schema %s, generate a query that will answer the question: %s. For canceling a booking request, return query like this \"UPDATE hotels SET booked = B'0' WHERE id = 1;\". Return the executable query text only without any other comments or quotes.",
 		dbSchema, question)
 
 	// Generate the SQL
