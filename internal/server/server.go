@@ -410,6 +410,7 @@ func InitializeOfflineConfigs(ctx context.Context, cfg ServerConfig) (
 // initializeTools initializes and validates the tools from the config.
 func initializeTools(ctx context.Context, cfg ServerConfig, sourcesMap map[string]sources.Source, instrumentation *telemetry.Instrumentation, l log.Logger) (map[string]tools.Tool, error) {
 	toolsMap := make(map[string]tools.Tool)
+	in := newInterception(ctx, sourcesMap)
 	for name, tc := range cfg.ToolConfigs {
 		var src sources.Source
 		t, err := func() (tools.Tool, error) {
@@ -449,6 +450,9 @@ func initializeTools(ctx context.Context, cfg ServerConfig, sourcesMap map[strin
 			continue
 		}
 
+		if t, err = in.wrap(name, tc, t, src); err != nil {
+			return nil, err
+		}
 		toolsMap[name] = t
 	}
 	toolNames := make([]string, 0, len(toolsMap))
