@@ -245,6 +245,10 @@ func UnmarshalPrimitiveConfig(ctx context.Context, raw []byte) (SourceConfigs, A
 		delete(resource, "kind")
 
 		switch kind {
+		case "interceptor":
+			if err := addInterceptorConfig(name, resource); err != nil {
+				return nil, nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("document %d: %w", docIndex, err)
+			}
 		case "source":
 			c, err := UnmarshalYAMLSourceConfig(ctx, name, resource)
 			if err != nil {
@@ -276,6 +280,10 @@ func UnmarshalPrimitiveConfig(ctx context.Context, raw []byte) (SourceConfigs, A
 			}
 			authServiceConfigs[name] = c
 		case "tool":
+			ic, err := takeIntercept(name, resource)
+			if err != nil {
+				return nil, nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("document %d: %w", docIndex, err)
+			}
 			c, err := UnmarshalYAMLToolConfig(ctx, name, resource)
 			if err != nil {
 				if len(file.Docs) > 1 {
@@ -285,6 +293,10 @@ func UnmarshalPrimitiveConfig(ctx context.Context, raw []byte) (SourceConfigs, A
 			}
 			if c == nil {
 				continue
+			}
+			if ic != nil {
+				ic.ToolConfig = c
+				c = *ic
 			}
 			if toolConfigs == nil {
 				toolConfigs = make(ToolConfigs)
