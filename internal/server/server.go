@@ -38,6 +38,7 @@ import (
 	"github.com/go-chi/render"
 	"github.com/googleapis/mcp-toolbox/internal/auth"
 	"github.com/googleapis/mcp-toolbox/internal/embeddingmodels"
+	"github.com/googleapis/mcp-toolbox/internal/extensions"
 	"github.com/googleapis/mcp-toolbox/internal/group"
 	"github.com/googleapis/mcp-toolbox/internal/log"
 	"github.com/googleapis/mcp-toolbox/internal/prompts"
@@ -410,7 +411,10 @@ func InitializeOfflineConfigs(ctx context.Context, cfg ServerConfig) (
 // initializeTools initializes and validates the tools from the config.
 func initializeTools(ctx context.Context, cfg ServerConfig, sourcesMap map[string]sources.Source, instrumentation *telemetry.Instrumentation, l log.Logger) (map[string]tools.Tool, error) {
 	toolsMap := make(map[string]tools.Tool)
-	in := newInterception(ctx, sourcesMap)
+	ext, err := extensions.Start(ctx, cfg.ExtensionConfigs, sourcesMap)
+	if err != nil {
+		return nil, err
+	}
 	for name, tc := range cfg.ToolConfigs {
 		var src sources.Source
 		t, err := func() (tools.Tool, error) {
@@ -450,7 +454,7 @@ func initializeTools(ctx context.Context, cfg ServerConfig, sourcesMap map[strin
 			continue
 		}
 
-		if t, err = in.wrap(name, tc, t, src); err != nil {
+		if t, err = ext.Wrap(name, tc, t, src); err != nil {
 			return nil, err
 		}
 		toolsMap[name] = t
@@ -758,6 +762,7 @@ func NewServer(ctx context.Context, cfg ServerConfig) (*Server, error) {
 	}
 
 	r.Mount("/mcp", mcpR)
+	r.Handle("/extensions/*", extensions.HTTPHandler())
 	if cfg.EnableAPI {
 		apiR, err := apiRouter(s)
 		if err != nil {
@@ -909,6 +914,7 @@ func (s *Server) ServeStdio(ctx context.Context, stdin io.Reader, stdout io.Writ
 // connections. It uses http.Server.Shutdown() and has the same functionality.
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.logger.DebugContext(ctx, "shutting down the server.")
+	defer extensions.CloseAll(ctx)
 	return s.srv.Shutdown(ctx)
 }
 

@@ -31,6 +31,7 @@ import (
 	"github.com/goccy/go-yaml/token"
 	"github.com/google/go-cmp/cmp"
 	"github.com/googleapis/mcp-toolbox/internal/auth/generic"
+	"github.com/googleapis/mcp-toolbox/internal/extensions"
 	"github.com/googleapis/mcp-toolbox/internal/resources"
 	"github.com/googleapis/mcp-toolbox/internal/server"
 	"github.com/googleapis/mcp-toolbox/internal/util"
@@ -45,6 +46,7 @@ type Config struct {
 	Resources         server.ResourceConfigs         `yaml:"resources"`
 	ResourceTemplates server.ResourceTemplateConfigs `yaml:"resourceTemplates"`
 	Groups            server.GroupConfigs            `yaml:"groups"`
+	Extensions        extensions.Configs             `yaml:"extensions"`
 }
 
 type ConfigParser struct {
@@ -185,6 +187,10 @@ func (p *ConfigParser) ParseConfig(ctx context.Context, raw []byte) (Config, err
 
 	// Parse contents
 	config.Sources, config.AuthServices, config.EmbeddingModels, config.Tools, config.Prompts, config.Resources, config.ResourceTemplates, config.Groups, err = server.UnmarshalPrimitiveConfig(ctx, raw)
+	if err != nil {
+		return config, err
+	}
+	config.Extensions, err = server.UnmarshalExtensionConfigs(ctx, raw)
 	if err != nil {
 		return config, err
 	}
@@ -504,6 +510,18 @@ func mergeConfigs(files ...Config) (Config, error) {
 				conflicts = append(conflicts, fmt.Sprintf("group '%s' (file #%d)", name, fileIndex+1))
 			} else {
 				merged.Groups[name] = grp
+			}
+		}
+
+		// Check for conflicts and merge extensions
+		for name, ext := range file.Extensions {
+			if _, exists := merged.Extensions[name]; exists {
+				conflicts = append(conflicts, fmt.Sprintf("extension '%s' (file #%d)", name, fileIndex+1))
+			} else {
+				if merged.Extensions == nil {
+					merged.Extensions = make(extensions.Configs)
+				}
+				merged.Extensions[name] = ext
 			}
 		}
 	}

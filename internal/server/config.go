@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"regexp"
 	"strings"
 
@@ -30,6 +31,7 @@ import (
 	"github.com/googleapis/mcp-toolbox/internal/auth/google"
 	"github.com/googleapis/mcp-toolbox/internal/embeddingmodels"
 	"github.com/googleapis/mcp-toolbox/internal/embeddingmodels/gemini"
+	"github.com/googleapis/mcp-toolbox/internal/extensions"
 	"github.com/googleapis/mcp-toolbox/internal/group"
 	"github.com/googleapis/mcp-toolbox/internal/prompts"
 	"github.com/googleapis/mcp-toolbox/internal/resources"
@@ -66,6 +68,8 @@ type ServerConfig struct {
 	// GroupConfigs defines groups of tools and prompts declared via `kind: group`
 	// (legacy `kind: toolset` configs are folded into groups at unmarshal).
 	GroupConfigs GroupConfigs
+	// ExtensionConfigs defines the extension instances (pkg/extension).
+	ExtensionConfigs extensions.Configs
 	// IgnoreUnknownTools logs warnings and skips unknown/unsupported tool types instead of failing to start.
 	IgnoreUnknownTools bool
 	// LoggingFormat defines whether structured loggings are used.
@@ -245,10 +249,8 @@ func UnmarshalPrimitiveConfig(ctx context.Context, raw []byte) (SourceConfigs, A
 		delete(resource, "kind")
 
 		switch kind {
-		case "interceptor":
-			if err := addInterceptorConfig(name, resource); err != nil {
-				return nil, nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("document %d: %w", docIndex, err)
-			}
+		case "extension":
+			// Parsed by UnmarshalExtensionConfigs.
 		case "source":
 			c, err := UnmarshalYAMLSourceConfig(ctx, name, resource)
 			if err != nil {
@@ -280,7 +282,7 @@ func UnmarshalPrimitiveConfig(ctx context.Context, raw []byte) (SourceConfigs, A
 			}
 			authServiceConfigs[name] = c
 		case "tool":
-			ic, err := takeIntercept(name, resource)
+			withExtensions, err := extensions.TakeToolOptions(name, resource)
 			if err != nil {
 				return nil, nil, nil, nil, nil, nil, nil, nil, fmt.Errorf("document %d: %w", docIndex, err)
 			}
@@ -294,10 +296,7 @@ func UnmarshalPrimitiveConfig(ctx context.Context, raw []byte) (SourceConfigs, A
 			if c == nil {
 				continue
 			}
-			if ic != nil {
-				ic.ToolConfig = c
-				c = *ic
-			}
+			c = withExtensions(c)
 			if toolConfigs == nil {
 				toolConfigs = make(ToolConfigs)
 			}
@@ -755,4 +754,36 @@ func UnmarshalYAMLResourceTemplateConfig(ctx context.Context, name string, r map
 		return nil, err
 	}
 	return resCfg, nil
+}
+
+// UnmarshalExtensionConfigs reads the `kind: extension` documents of a
+// configuration. UnmarshalPrimitiveConfig skips them.
+func UnmarshalExtensionConfigs(ctx context.Context, raw []byte) (extensions.Configs, error) {
+	var cfgs extensions.Configs
+	decoder := yaml.NewDecoder(bytes.NewReader(raw))
+	for docIndex := 1; ; docIndex++ {
+		var resource map[string]any
+		if err := decoder.DecodeContext(ctx, &resource); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, fmt.Errorf("document %d: %s", docIndex, yaml.FormatError(err, false, false))
+		}
+		if resource["kind"] != "extension" {
+			continue
+		}
+		name, _ := resource["name"].(string)
+		c, err := extensions.ParseConfig(name, resource)
+		if err != nil {
+			return nil, fmt.Errorf("document %d: %w", docIndex, err)
+		}
+		if cfgs == nil {
+			cfgs = extensions.Configs{}
+		}
+		if _, dup := cfgs[name]; dup {
+			return nil, fmt.Errorf("extension %q declared more than once", name)
+		}
+		cfgs[name] = c
+	}
+	return cfgs, nil
 }
