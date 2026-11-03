@@ -313,6 +313,7 @@ func (opts *ToolboxOptions) LoadConfig(ctx context.Context, parser *ConfigParser
 	opts.Cfg.ResourceConfigs = finalConfig.Resources
 	opts.Cfg.ResourceTemplateConfigs = finalConfig.ResourceTemplates
 	opts.Cfg.GroupConfigs = finalConfig.Groups
+	opts.Cfg.ExtensionConfigs = finalConfig.Extensions
 
 	return isCustomConfigured, nil
 }
